@@ -1,0 +1,101 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"unsafe"
+)
+
+type PcapFileHeader struct {
+	magic    uint32
+	major    uint16
+	minor    uint16
+	thisZone uint32
+	sigFigs  uint32
+	snapLen  uint32
+	linkType uint32
+}
+
+type PktHeader struct {
+	TimestampH uint32
+	TimestampL uint32
+	CapLen     uint32
+	Length     uint32
+}
+
+func OpenPcap(name string) (*os.File, error) {
+	var FileHdr *PcapFileHeader
+	var readlen int
+
+	fmt.Printf("Open pcap file %s ", name)
+	fp, err := os.Open(name)
+	//defer fp.Close()
+	if err != nil {
+		fmt.Printf("failed with err %s.\n", err)
+		return fp, err
+	}
+
+	fmt.Printf("success.\n")
+
+	fmt.Printf("Read file ")
+	buf := make([]byte, 24)
+	readlen, _ = fp.Read(buf)
+	if readlen == 0 {
+		fmt.Printf("failed with readlen %d.\n", readlen)
+		return fp, err
+	}
+	fp.Seek(24, 0)
+	fmt.Printf("success.\n")
+
+	FileHdr = *(**PcapFileHeader)(unsafe.Pointer(&buf))
+	fmt.Printf("Pcap file information:\n")
+	fmt.Printf("magic    :%08x\n", FileHdr.magic)
+	fmt.Printf("major    :%d\n", FileHdr.major)
+	fmt.Printf("minor    :%d\n", FileHdr.minor)
+	fmt.Printf("thisZone :%08x\n", FileHdr.thisZone)
+	fmt.Printf("sigFigs  :%d\n", FileHdr.sigFigs)
+	fmt.Printf("snapLen  :%d\n", FileHdr.snapLen)
+	fmt.Printf("linkType :%d\n", FileHdr.linkType)
+
+	return fp, err
+}
+
+func PktParse(f *os.File) int {
+	var pktHdr *PktHeader
+	buf := make([]byte, 16)
+	readlen, _ := f.Read(buf)
+	if readlen == 0 {
+		return 0
+	}
+
+	pktHdr = *(**PktHeader)(unsafe.Pointer(&buf))
+	fmt.Printf("Packet header information:\n")
+	fmt.Printf("TimestampH    :%08x\n", pktHdr.TimestampH)
+	fmt.Printf("TimestampL    :%08x\n", pktHdr.TimestampL)
+	fmt.Printf("CapLen        :%d\n", pktHdr.CapLen)
+	fmt.Printf("Length        :%d\n", pktHdr.Length)
+
+	f.Seek((int64)(pktHdr.CapLen), 1)
+	return readlen
+}
+
+func main() {
+	var fileName string = os.Args[1]
+	var packetCnt int = 0
+	fmt.Println("===============The pcap file reader.===============")
+	fmt.Printf("Pcap file is:%s.\n", fileName)
+
+	f, err := OpenPcap(fileName)
+	if err != nil {
+		fmt.Printf("Open pcap file %s failed with error %s.\n", fileName, err)
+	}
+
+	for true {
+		if 0 == PktParse(f) {
+			break
+		}
+		packetCnt++
+	}
+	fmt.Printf("Pcap file read finish, packet count %d.\n", packetCnt)
+	defer f.Close()
+}
